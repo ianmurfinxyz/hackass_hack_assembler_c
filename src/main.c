@@ -1,7 +1,28 @@
 
 #include <stdio.h>
-#include "symbollib.h"
+//#include "symbollib.h"
+#include "parser.h"
+#include "asmerr.h"
 
+int main(){
+  Parser_t* p_parser = new_parser("test.asm");
+  if(p_parser == NULL){
+    return FAIL;
+  }
+
+  Command_t command;
+  while(parser_has_next(p_parser)){
+    if(parser_next_command(p_parser, &command) == SUCCESS){
+      print_command(stderr, &command);
+     }
+  }
+
+  free_parser(p_parser);
+  return SUCCESS;
+}
+
+
+/*
 int main(int argc, char* argv[]){
   struct SymLib* p_lib = NULL;
   int err;
@@ -32,4 +53,4 @@ int main(int argc, char* argv[]){
   free_symbol_library(&p_lib);
 
   return 0;
-}
+}*/
