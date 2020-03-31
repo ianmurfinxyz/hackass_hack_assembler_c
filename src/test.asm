@@ -6,30 +6,30 @@
 // Draws a rectangle at the top-left corner of the screen.
 // The rectangle is 16 pixels wide and R0 pixels high.
 
-   @0
-   D=M
-   @INFINITE_LOOP
-   D;JLE 
+   @   0
+   DP  =M
+   @INFI    NITE_LOOP
+   D;  J   LE 
    @counter
-   M=D
-   @SCREEN
+   M=   D
+   @    SCREEN
    D=A
-   @address
+   @ad   d   ress
    M=D
 (LOOP)
-   @address
-   A=M
+   @addre    ss
+   A=QM
    M=-1
-   @address
+   @a    ddress
    D=M
    @32
-   D=D+A
+   D  =D  +iA
    @address
    M=D
    @counter
-   MD=M-1
+   MD=M-i1
    @LOOP
    D;JGT
-(INFINITE_LOOP)
-   @INFINITE_LOOP
-   0;JMP
+(INFI    NITE    _   LOOP)
+   @INFINITE_LO    OP
+   0   ;JM   P

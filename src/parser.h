@@ -27,7 +27,7 @@
 #define SYMBOL_L 0xac   // L command symbol
 
 #define MAX_MNEMONIC_CHAR_LENGTH 4 // no language mnemonic in 'Hack' assembly is longer than this.
-#define MAX_SYMBOL_CHAR_LENGTH 63  // this determines the maximum length of user-defined assembly symbols.
+#define MAX_SYM_LENGTH 63  // this determines the maximum length of user-defined assembly symbols.
 
 /*
  * brief: closed parser type; instatiate with 'new_parser' to use this module.
@@ -49,7 +49,7 @@ typedef struct Parser Parser_t;
  */
 typedef struct Command {
   uint8_t _type;
-  char _sym[MAX_SYMBOL_CHAR_LENGTH];
+  char _sym[MAX_SYM_LENGTH];
   char _dest[MAX_MNEMONIC_CHAR_LENGTH]; 
   char _comp[MAX_MNEMONIC_CHAR_LENGTH];
   char _jump[MAX_MNEMONIC_CHAR_LENGTH];
@@ -63,7 +63,7 @@ typedef struct Command {
  */
 typedef struct Symbol {
   uint8_t _type;
-  char _sym[MAX_SYMBOL_CHAR_LENGTH];
+  char _sym[MAX_SYM_LENGTH];
 } Symbol_t;
 
 

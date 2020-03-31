@@ -56,7 +56,6 @@ static int add_symbol(Symbol_t* p_sym){
        result = FAIL;
     }
     return result;
-    //return (result == SUCCESS) ? SUCCESS : fprintf(stderr, "multiple declerations of label %s - labels must be unique.", p_sym->_sym), g_asm_fail = FAIL, FAIL;
   }
 }
 
