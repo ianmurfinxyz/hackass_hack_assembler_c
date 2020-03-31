@@ -3,18 +3,9 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include "dynpoolalloc.h"
-#include "defs.h"
+#include "asmerr.h"
 
 static const size_t LIB_NODE_POOL_SIZE_NODES = 100; /* number of LibNodes per pool allocator. */
-
-// TODO:
-// 1) ensure all functions that create a closed type accept ** arguments so they actually modify the pointer passed in 
-//    rather than passing a pointer by value and thus causing a memory leak.
-// 2) implement the 2 private helpers.
-// 3) implement a function to print the contents of a library to the console. will require finding all unique paths
-//    in the library tree.
-
-
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*
@@ -122,34 +113,11 @@ static int add_child(struct SymLib* p_lib, struct LibNode* p_parent, uint16_t da
   return SUCCESS;
 }
 
-/*-------------------------------------------------------------------------------------------------------------------*/
-/*
- * brief: tests if a character is a member of the set of valid symbol characters, 
- *                 valid_char_set={'a'-'z', 'A'-'Z', '0'-'9', '_', '.', '$', ':'} 
- */
-/*-------------------------------------------------------------------------------------------------------------------*/
-static bool is_valid_symbol_char(char c){
-  if(('a' <= c && c <= 'z') || 
-     ('A' <= c && c <= 'Z') || 
-     ('0' <= c && c <= '9') || 
-     (c == '_') || 
-     (c == '.') || 
-     (c == '$') || 
-     (c == ':')){
-    return true;
-  }
-  return false;
-}
-
 /*=====================================================================================================================
  * PUBLIC INTERFACE 
  *===================================================================================================================*/
 /*-------------------------------------------------------------------------------------------------------------------*/
-/*
- * SEE HEADER
- */
-/*-------------------------------------------------------------------------------------------------------------------*/
-int new_symbol_library(struct SymLib** pp_lib){
+int new_symlib(struct SymLib** pp_lib){
   int err;
 
   // allocate the symbol library...
@@ -171,6 +139,7 @@ int new_symbol_library(struct SymLib** pp_lib){
   if(err != SUCCESS){
     free_dynamic_pool_alloc(&((*pp_lib)->_p_pool));
     free((*pp_lib));
+    pp_lib = NULL;
     return ERROR_4;
   } 
   (*pp_lib)->_p_root = (struct LibNode*)mem;
@@ -184,11 +153,7 @@ int new_symbol_library(struct SymLib** pp_lib){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-/*
- * SEE HEADER
- */
-/*-------------------------------------------------------------------------------------------------------------------*/
-int free_symbol_library(struct SymLib** pp_lib){
+int free_symlib(struct SymLib** pp_lib){
   free_dynamic_pool_alloc(&((*pp_lib)->_p_pool));
   free((*pp_lib));
   (*pp_lib) = NULL;
@@ -196,19 +161,8 @@ int free_symbol_library(struct SymLib** pp_lib){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-/*
- * SEE HEADER
- */
-/*-------------------------------------------------------------------------------------------------------------------*/
-int add_symbol(struct SymLib* p_lib, const char* sym, uint16_t address){
+int symlib_add_symbol(struct SymLib* p_lib, const char* sym, uint16_t address){
   int err; 
-
-  // check all characters in the symbol are members of the set of valid characters...
-  for(int i = 0; sym[i] != '\0'; ++i){
-    if(is_valid_symbol_char(sym[i]) == false){
-      return ERROR_1;
-    }
-  }
 
   // find the last character in the symbol for which a node exists, and find its node...
   struct LibNode* node = p_lib->_p_root;
@@ -228,7 +182,7 @@ int add_symbol(struct SymLib* p_lib, const char* sym, uint16_t address){
   if(sym[i] == '\0'){
     struct LibNode* terminator = find_terminator(node);
     if(terminator != NULL){
-      return ERROR_2;
+      return ERROR_1;
     }
   }
 
@@ -237,7 +191,7 @@ int add_symbol(struct SymLib* p_lib, const char* sym, uint16_t address){
     struct LibNode* p_child = NULL;
     err = add_child(p_lib, node, (uint16_t)sym[j], false, &p_child);
     if(err != SUCCESS){
-      return ERROR_3;
+      return ERROR_2;
     }
     node = p_child;
   }
@@ -249,11 +203,7 @@ int add_symbol(struct SymLib* p_lib, const char* sym, uint16_t address){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-/*
- * SEE HEADER
- */
-/*-------------------------------------------------------------------------------------------------------------------*/
-int search_symbol_library(struct SymLib* p_lib, const char* sym, uint16_t* p_address){
+int symlib_search_symbol(struct SymLib* p_lib, const char* sym, uint16_t* p_address){
   // find the last character in the symbol for which a node exists, and find its node...
   struct LibNode* node = p_lib->_p_root;
   int i = 0;

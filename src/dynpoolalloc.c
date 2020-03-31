@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include "poolalloc.h"
 #include "dynpoolalloc.h"
-#include "defs.h"
+#include "asmerr.h"
 
 /*
  * brief: node in the linked list of pool allocators.

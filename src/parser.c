@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 #include <assert.h>
 #include "asmerr.h"
 #include "parser.h"
@@ -11,6 +12,12 @@
 /*=====================================================================================================================
  * GLOBAL PARSING DATA 
  *===================================================================================================================*/
+
+/*
+ * buffer to store line read from translation unit/file.
+ */
+#define LINE_BUFFER_CHAR_LENGTH 200
+char g_line_buff[LINE_BUFFER_CHAR_LENGTH]; 
 
 /*
  * parsing phases/states. (used during mnemonic extraction.)
@@ -145,7 +152,8 @@ static const char* format_id_to_string(int fmt){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-static inline void print_error(const char* filename, int line, const char* errstr, const char* code){
+static inline void flag_error(const char* filename, int line, const char* errstr, const char* code){
+  g_asm_fail = FAIL;
   fprintf(stderr, "%s:%d:error:%s\n  %d |%s\n", filename, line, errstr, line, code); 
 }
 
@@ -196,7 +204,7 @@ static int parse_format(Parser_t* p, const char* line){
     return CFORMAT_LX;  
   }
   else{ 
-    print_error(p->_filename, p->_line, "unrecognised instruction format", line);
+    flag_error(p->_filename, p->_line, "unrecognised instruction format", line);
     return FAIL;
   }
 }
@@ -239,7 +247,7 @@ static int extract_mnemonic(Parser_t* p, const char* line, int* lc, char delim, 
       char ebuff[70];
       memset((void*)ebuff, '\0', 70);
       snprintf(ebuff, 70, "invalid %s for C command of format %s", mnn, fmt);
-      print_error(p->_filename, p->_line, ebuff, line);
+      flag_error(p->_filename, p->_line, ebuff, line);
       result = FAIL;
       break;
     } 
@@ -344,7 +352,7 @@ static int extract_format_C2(Parser_t* p, const char* line, Command_t* p_out){
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*
- * note: the parser considers any string of characters than contains only numbers to be a literal. 
+ * note: the parser considers any string of characters that contains only numbers to be a literal. 
  */
 static bool is_literal(const char* str, int n){
   int sc = 0;
@@ -358,12 +366,54 @@ static bool is_literal(const char* str, int n){
   return true;
 }
 /*-------------------------------------------------------------------------------------------------------------------*/
+/*
+ * brief: tests if a symbol character is a member of the set of valid symbol characters.
+ *    valid set = {a-z, A-Z, 0-9, -, ., $, :}
+ */
+/*-------------------------------------------------------------------------------------------------------------------*/
+static bool is_valid_symbol_char(char c){
+  if(('a' <= c && c <= 'z') || 
+     ('A' <= c && c <= 'Z') || 
+     ('0' <= c && c <= '9') || 
+     (c == '_') || 
+     (c == '.') || 
+     (c == '$') || 
+     (c == ':')){
+    return true;
+  }
+  return false;
+}
+
+/*-------------------------------------------------------------------------------------------------------------------*/
+static bool is_valid_symbol(const char* sym, int n){
+  int sc = 0;
+  if(sc >= n || ('0' <= sym[sc] && sym[sc] <= '9')){ // symbols cannot start with a number.
+    return false;
+  }
+  ++sc;
+  while(sc < n && sym[sc] != '\0'){
+    if(!is_valid_symbol_char(sym[sc])){
+      return false;
+    }
+    ++sc;
+  }
+  return true;
+}
+
+/*-------------------------------------------------------------------------------------------------------------------*/
+/*
+ * brief: extracts an A command; extracts both A0 and A1 commands.
+ * returns: SUCCESS if command extracted, FAIL if not extracted.
+ *
+ * note: will FAIL if the argument to the A command is neither a literal or a valid symbol.
+ */
+/*-------------------------------------------------------------------------------------------------------------------*/
 static int extract_format_AX(Parser_t* p, const char* line, Command_t* p_out){
   // check '@' is first character (excluding white space in line)...
   int lc = 0;
   while(line[lc] != '@'){
     if(!isspace(line[lc])){
-      print_error(p->_filename, p->_line, "unexpected character before '@'", line);   
+      flag_error(p->_filename, p->_line, "unexpected character before '@'", line);   
       return FAIL;
     }
     ++lc;
@@ -383,14 +433,19 @@ static int extract_format_AX(Parser_t* p, const char* line, Command_t* p_out){
     ++lc;
   }
 
-  // determine if extracted string is symbol or literal...
-  // note: parser knows nothing of valid symbol format, it only knows how to read a literal, thus it considers
-  // anything not a literal to be a symbol.
+  // determine if extracted string is a valid symbol or a literal...
   if(is_literal(buff, bc)){
     p_out->_type = CFORMAT_A1;
   }
-  else { 
+  else if(is_valid_symbol(buff, bc)){ 
     p_out->_type = CFORMAT_A0;
+  }
+  else {
+    char ebuff[70];
+    memset((void*)ebuff, '\0', 70);
+    snprintf(ebuff, 70, "expected symbol or literal after '@', recieved: %s", buff);
+    flag_error(p->_filename, p->_line, ebuff, line);
+    return FAIL;
   }
 
   return SUCCESS;
@@ -402,7 +457,7 @@ static int extract_format_LX(Parser_t* p, const char* line, Command_t* p_out){
   int lc = 0;
   while(line[lc] != '('){
     if(!isspace(line[lc])){
-      print_error(p->_filename, p->_line, "unexpected character before '('", line);
+      flag_error(p->_filename, p->_line, "unexpected character before '('", line);
       return FAIL;
     }
     ++lc;
@@ -422,14 +477,19 @@ static int extract_format_LX(Parser_t* p, const char* line, Command_t* p_out){
     ++lc;
   }
 
-  // determine if extracted string is symbol or literal...
-  // note: parser knows nothing of valid symbol format, it only knows how to read a literal, thus it considers
-  // anything not a literal to be a symbol.
+  // determine if extracted string is a valid symbol or a literal...
   if(is_literal(buff, bc)){
     p_out->_type = CFORMAT_L1;
   }
-  else { 
+  else if(is_valid_symbol(buff, bc)){ 
     p_out->_type = CFORMAT_L0;
+  }
+  else {
+    char ebuff[70];
+    memset((void*)ebuff, '\0', 70);
+    snprintf(ebuff, 70, "expected symbol or literal between '(' and ')', recieved: %s", buff);
+    flag_error(p->_filename, p->_line, ebuff, line);
+    return FAIL;
   }
 
   return SUCCESS;
@@ -445,12 +505,19 @@ static void clear_command(Command_t* p_cmd){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
+static void clear_symbol(Symbol_t* p_sym){
+  p_sym->_type = SYMBOL_X;
+  memset((void*)p_sym->_sym, '\0', MAX_SYMBOL_CHAR_LENGTH); 
+}
+
+/*-------------------------------------------------------------------------------------------------------------------*/
 /*
  * brief: parses an assmebly instruction into a command struct.
  * return: SUCCESS if no parsing errors, else FAIL; p_out garbage if FAIL.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
 static int parse_command(Parser_t* p, const char* line, int n, Command_t* p_out){
+  clear_command(p_out);
   int fmt = parse_format(p, line);
   int result;
   switch(fmt){
@@ -476,7 +543,8 @@ static int parse_command(Parser_t* p, const char* line, int n, Command_t* p_out)
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-static int parse_symbol(Parser_t* p, const char* line, int n, char* p_out, int m){
+static int parse_symbol(Parser_t* p, char* line, int n, Symbol_t* p_out){
+  clear_symbol(p_out);
   int fmt = parse_format(p, line);
   int result = FAIL;
   Command_t cmd;
@@ -484,13 +552,19 @@ static int parse_symbol(Parser_t* p, const char* line, int n, char* p_out, int m
   switch(fmt){
     case CFORMAT_AX:
       result = extract_format_AX(p, line, &cmd);
-      if(result == SUCCESS && cmd._type == CFORMAT_A1){
-        result = FAIL; 
+      if(result == SUCCESS && cmd._type == CFORMAT_A0){
+        p_out->_type = SYMBOL_A;
+      }
+      else{
+        result = FAIL;
       }
       break;
     case CFORMAT_LX:
       result = extract_format_LX(p, line, &cmd);
       if(result == SUCCESS && cmd._type == CFORMAT_L1){
+        p_out->_type = SYMBOL_L;
+      }
+      else{
         result = FAIL;
       }
       break;
@@ -498,9 +572,56 @@ static int parse_symbol(Parser_t* p, const char* line, int n, char* p_out, int m
       result = FAIL;
   }
   if(result == SUCCESS){
-    strncpy(p_out, cmd._sym, m);
+    strncpy(p_out->_sym, cmd._sym, MAX_SYMBOL_CHAR_LENGTH);
   }
   return result;
+}
+
+/*-------------------------------------------------------------------------------------------------------------------*/
+/*
+ * brief: tests if the line contains nothing but whitespace.
+ */
+/*-------------------------------------------------------------------------------------------------------------------*/
+static bool is_line_whitespace(char* line, int n){
+  int lc = 0;
+  while(line[lc] != '\0' && lc < n){
+    if(!isspace(line[lc])){
+      return false;
+    }
+    ++lc;
+  }
+  return true;
+}
+
+/*-------------------------------------------------------------------------------------------------------------------*/
+/*
+ * brief: tests if the line is a full line comment.
+ */
+/*-------------------------------------------------------------------------------------------------------------------*/
+static bool is_line_comment(char* line, int n){
+  int lc = 0;
+  while(line[lc] != '\0' && lc < n && isspace(line[lc])){
+    ++lc;
+  }
+  return (line[lc] != '\0' && lc < (n - 2) && line[lc] == '/' && line[lc+1] == '/') ? true : false;
+}
+
+
+/*-------------------------------------------------------------------------------------------------------------------*/
+/*
+ * brief: gets the next code line from the file, skipping lines with only whitespace or comments.
+ * return: SUCCESS if line extracted, FAIL if end of file.
+ */
+/*-------------------------------------------------------------------------------------------------------------------*/
+static int get_next_line(Parser_t* p, char* line, int n){
+  memset((void*)line, '\0', n); 
+  while(fgets(line, n - 1, p->_tunit) != NULL){ // n-1 ensure line is always terminated with '\0'
+    ++p->_line;
+    if(!is_line_whitespace(line, n) && !is_line_comment(line, n)){
+      return SUCCESS;
+    }
+  }
+  return FAIL;
 }
 
 /*=====================================================================================================================
@@ -542,10 +663,10 @@ Parser_t* new_parser(const char* filename){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-void free_parser(Parser_t* p){
-  fclose(p->_tunit);
-  free(p->_filename);
-  free(p);
+void free_parser(Parser_t** p){
+  fclose((*p)->_tunit);
+  free((*p)->_filename);
+  free(*p);
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
@@ -558,47 +679,32 @@ void free_parser(Parser_t* p){
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
 int parser_next_command(Parser_t* p, Command_t* p_out){
-  clear_command(p_out);
-  const int n = MAX_SYMBOL_CHAR_LENGTH + 40;
-  char buff[n];
-  memset((void*)buff, '\0', n); 
   int result = FAIL;
-  if(fgets(buff, n - 1, p->_tunit) != NULL){ // n-1 ensure line is always terminated with '\0'
-    result = parse_command(p, buff, n, p_out);
-    ++p->_line;
+  if(get_next_line(p, g_line_buff, n) == SUCCESS){ 
+    result = parse_command(p, line, n, p_out);
   }
   return result;
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*
- * brief: parses the next line in the translation unit and, if the line is an A or L command, and contains a potential
+ * brief: parses the next line in the translation unit and, if the line is an A or L command, and contains a valid
  *  symbol, returns the symbol.
  *
  * @param p_out: a buffer to output the symbol extracted by the parser.
  * @param n: the size of the output buffer.
  *
- * return: SUCCESS if potential symbol extracted, else FAIL.
+ * return: SUCCESS if symbol extracted, else FAIL.
  *
- * note: a symbol is a 'potential symbol' because the parser does not know what constitutes a valid symbol, thus
- *  any string of characters that consists of more than just numbers is considered a symbol by the parser.
- *
+ * note: the parser will NOT return an invalid symbol, rather it prints an error and returns FAIL.
  * note: p_out buffer MUST be atleast MAX_SYMBOL_CHAR_LENGTH in size.
  *
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
-int parser_next_symbol(Parser_t* p, char* p_out, int m){
-  if(m < MAX_SYMBOL_CHAR_LENGTH){
-    return FAIL;
-  }
-  memset((void*)p_out, '\0', m);
+int parser_next_symbol(Parser_t* p, Symbol_t* p_out){
   int result = FAIL;
-  const int n = MAX_SYMBOL_CHAR_LENGTH + 40;
-  char buff[n];
-  memset((void*)buff, '\0', n); 
-  if(fgets(buff, n - 1, p->_tunit) != NULL){ // n-1 ensure line is always terminated with '\0'
-    result = parse_symbol(p, buff, n, p_out, m);
-    ++p->_line;
+  if(get_next_line(p, g_line_buff, n) == SUCCESS){ 
+    result = parse_symbol(p, line, n, p_out);
   }
   return result;
 }
@@ -613,8 +719,8 @@ bool parser_has_next(Parser_t* p){
  * brief: moves the parser back to the start of the file/translation unit.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
-void parser_seek_start(Parser_t* p){
-
+void parser_rewind(Parser_t* p){
+  rewind(p->_tunit);
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/

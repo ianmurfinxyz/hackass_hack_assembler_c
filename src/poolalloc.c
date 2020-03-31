@@ -1,7 +1,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include "poolalloc.h"
-#include "defs.h"
+#include "asmerr.h"
 
 /*--------------------------------------------------------------------------------------------------------------------*/
 int init_pool_alloc(struct PoolAlloc* p_pool, size_t alloc_size_bytes, size_t pool_size_allocs){

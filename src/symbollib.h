@@ -22,16 +22,17 @@ struct SymLib;
  *
  * note: calls malloc.
  * note: assumes p_lib is a hanging pointer, if not will result in mem leak!
+ * note: guarantees pp_lib == NULL if return ERROR of any kind.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
-int new_symbol_library(struct SymLib** pp_lib);
+int new_symlib(struct SymLib** pp_lib);
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*
  * brief: deallocates all memory used by a symbol library.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
-int free_symbol_library(struct SymLib** pp_lib);
+int free_symlib(struct SymLib** pp_lib);
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*
@@ -41,12 +42,11 @@ int free_symbol_library(struct SymLib** pp_lib);
  * @param address: the RAM/ROM address to map to the symbol.
  * return: 
  *        SUCCESS if symbol added.
- *        ERROR_1 if symbol contains an invalid character.
- *        ERROR_2 if symbol already in the symbol library.
- *        ERROR_3 if failed to modify the underlying data structure, thus cannot add symbol.
+ *        ERROR_1 if symbol already in the symbol library.
+ *        ERROR_2 if failed to modify the underlying data structure, thus cannot add symbol.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
-int add_symbol(struct SymLib* p_lib, const char* sym, uint16_t address);
+int symlib_add_symbol(struct SymLib* p_lib, const char* sym, uint16_t address);
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*
@@ -59,6 +59,6 @@ int add_symbol(struct SymLib* p_lib, const char* sym, uint16_t address);
  *    ERROR_1 if symbol not found.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
-int search_symbol_library(struct SymLib* p_lib, const char* sym, uint16_t* p_address);
+int symlib_search_symbol(struct SymLib* p_lib, const char* sym, uint16_t* p_address);
 
 #endif

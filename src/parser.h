@@ -19,6 +19,13 @@
 #define CFORMAT_L0 0xa8 // L command: (<symbol>)
 #define CFORMAT_L1 0xa9 // L command: (<literal>)
 
+/*
+ * ids for symbols format; used for Symbol_t::_type member.
+ */
+#define SYMBOL_X 0xaa   // unknown symbol type
+#define SYMBOL_A 0xab   // A command symbol
+#define SYMBOL_L 0xac   // L command symbol
+
 #define MAX_MNEMONIC_CHAR_LENGTH 4 // no language mnemonic in 'Hack' assembly is longer than this.
 #define MAX_SYMBOL_CHAR_LENGTH 63  // this determines the maximum length of user-defined assembly symbols.
 
@@ -31,7 +38,7 @@ typedef struct Parser Parser_t;
  * brief: Parsed assembly instruction data.
  *
  * @member _type: the format type of the command (CFORMAT_C0, CFORMAT_C1 ...).
- * @member _literal: numeric value extracted from an A or L command.
+ * @member _sym: buffer to store symbol string.
  * @member _dest: destination mnemonic extracted from a C command of format C0 or C1.
  * @member _comp: computation mnemonic extracted from a C command.
  * @member _jump: jump mnemonic extracted from a C command of format C0 or C2.
@@ -48,6 +55,17 @@ typedef struct Command {
   char _jump[MAX_MNEMONIC_CHAR_LENGTH];
 } Command_t;
 
+/*
+ * brief: parsed symbol data. Used in parsing phase that only extracts symbol data.
+ *
+ * @member _type: either SYMBOL_X | SYMBOL_A | SYMBOL_L
+ * @member _sym: buffer to store symbol string.
+ */
+typedef struct Symbol {
+  uint8_t _type;
+  char _sym[MAX_SYMBOL_CHAR_LENGTH];
+} Symbol_t;
+
 
 /*
  *
@@ -57,7 +75,7 @@ Parser_t* new_parser(const char* filename);
  *
  */
 
-void free_parser(Parser_t* p_parser);
+void free_parser(Parser_t** p_parser);
 
 /*
  *
@@ -67,7 +85,17 @@ int parser_next_command(Parser_t* p_parser, Command_t* p_out);
 /*
  *
  */
+int parser_next_symbol(Parser_t* p, Symbol_t* p_out);
+
+/*
+ *
+ */
 bool parser_has_next(Parser_t* p_parser);
+
+/*
+ *
+ */
+void parser_rewind(Parser_t* p_parser);
 
 /*
  *

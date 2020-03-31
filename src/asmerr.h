@@ -23,4 +23,9 @@ extern int asmerr;
  */
 void asmerrstr(int asmerr);
 
+/*
+ * brief: global error flag, set if any assembly error occurs, prevents output of .hack file.
+ */
+extern int g_asm_fail;
+
 #endif
