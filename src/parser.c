@@ -150,8 +150,7 @@ static const char* format_id_to_string(int fmt){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-static inline void flag_error(const char* filename, int line, const char* errstr, const char* code){
-  g_asm_fail = FAIL;
+static inline void print_error(const char* filename, int line, const char* errstr, const char* code){
   fprintf(stderr, "%s:%d:error:%s\n  %d |%s\n", filename, line, errstr, line, code); 
 }
 
@@ -202,7 +201,7 @@ static int parse_format(Parser_t* p, const char* line){
     return CFORMAT_LX;  
   }
   else{ 
-    flag_error(p->_filename, p->_lineno, "unrecognised instruction format", line);
+    print_error(p->_filename, p->_lineno, "unrecognised instruction format", line);
     return FAIL;
   }
 }
@@ -231,7 +230,7 @@ static int extract_mnemonic(Parser_t* p, const char* line, int* lc, char delim, 
   }
 
   // if too long, cannot be a valid mnemonic.
-  if(bc == (MAX_MNEMONIC_CHAR_LENGTH - 1)){
+  if(line[*lc] != delim){
     result = FAIL;
   }
 
@@ -251,7 +250,7 @@ static int extract_mnemonic(Parser_t* p, const char* line, int* lc, char delim, 
 
   if(result == FAIL){
     snprintf(g_error_line, MAX_LINE_LENGTH,"invalid %s for C command of format %s", mnn, fmt);
-    flag_error(p->_filename, p->_lineno, g_error_line, line);
+    print_error(p->_filename, p->_lineno, g_error_line, line);
     result = FAIL;
   }
 
@@ -408,7 +407,7 @@ static int extract_inner(Parser_t* p, const char* line, char* out, int n, char s
   int lc = 0;
   if(line[lc] != start){
     snprintf(g_error_line, MAX_LINE_LENGTH, "unexpected character before '%c'", start);
-    flag_error(p->_filename, p->_lineno, g_error_line, line);
+    print_error(p->_filename, p->_lineno, g_error_line, line);
     return FAIL;
   }
   ++lc; // skip 'start' char
@@ -438,9 +437,14 @@ static int extract_inner(Parser_t* p, const char* line, char* out, int n, char s
 static int extract_format_ALX(Parser_t* p, const char* line, char ds, char de, int fmt0, int fmt1, Command_t* p_out){
   extract_inner(p, line, p_out->_sym, MAX_SYM_LENGTH, ds, de);
   p_out->_type = (is_literal(p_out->_sym, MAX_SYM_LENGTH)) ? fmt1 : (is_symbol(p_out->_sym, MAX_SYM_LENGTH)) ? fmt0 : CFORMAT_XX;
-  if(p_out->_type == CFORMAT_XX){
+  if(p_out->_type == fmt1 && (strlen(p_out->_sym) > 5)){
+    snprintf(g_error_line, MAX_LINE_LENGTH, "literal '%s' too large for 15-bit address", p_out->_sym);
+    print_error(p->_filename, p->_lineno, g_error_line, line);
+    return FAIL;
+  }
+  else if(p_out->_type == CFORMAT_XX){
     snprintf(g_error_line, MAX_LINE_LENGTH, "expected symbol or literal after '%c', recieved: %s", ds,  p_out->_sym);
-    flag_error(p->_filename, p->_lineno, g_error_line, line);
+    print_error(p->_filename, p->_lineno, g_error_line, line);
     return FAIL;
   }
   return SUCCESS;
@@ -512,7 +516,7 @@ static int parse_symbol(Parser_t* p, char* line, int n, Symbol_t* p_out){
       break;
     case CFORMAT_LX:
       result = extract_format_ALX(p, line, '(', ')', CFORMAT_L0, CFORMAT_L1, &cmd);
-      if(result == SUCCESS && cmd._type == CFORMAT_L1){
+      if(result == SUCCESS && cmd._type == CFORMAT_L0){
         p_out->_type = SYMBOL_L;
       }
       else{
@@ -574,7 +578,7 @@ static void strip_line(char* line, int n){
 /*-------------------------------------------------------------------------------------------------------------------*/
 static int get_next_line(Parser_t* p, char* line, int n){
   memset((void*)line, '\0', n); 
-  while(fgets(line, n - 1, p->_tunit) != NULL){ // n-1 ensures line is always terminated with '\0'
+  while(fgets(line, n, p->_tunit) != NULL){ 
     ++p->_lineno;
     strip_line(line, n);
     if(!strlen(line) == 0){
@@ -635,26 +639,29 @@ void free_parser(Parser_t** p){
 /* brief: parses the next line in the translation unit and returns the result in a Command_t struct.
  * return: 
  *      SUCCESS if line parsed into command.
- *      FAIL if parser error or end of file error.
+ *      FAIL if parser error.
+ *      CMD_EOF if end of commands.
  *
  * note: output command is invalid in all case except return success.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
 int parser_next_command(Parser_t* p, Command_t* p_out){
-  return (get_next_line(p, g_line, MAX_LINE_LENGTH) == SUCCESS) ? parse_command(p, g_line, MAX_LINE_LENGTH, p_out) : FAIL;
+  return (get_next_line(p, g_line, MAX_LINE_LENGTH) == SUCCESS) ? parse_command(p, g_line, MAX_LINE_LENGTH, p_out) : CMD_EOF;
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*
  * brief: parses the next line in the translation unit and, if the line is an A or L command, and contains a valid
  *  symbol, returns the symbol.
- * return: SUCCESS if symbol extracted, else FAIL.
+ * return: SUCCESS if symbol extracted
+ *         FAIL if symbol not extracted for any reason.
+ *         CMD_EOF if end of commands.
  *
  * note: the parser will NOT return an invalid symbol, rather it prints an error and returns FAIL.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
 int parser_next_symbol(Parser_t* p, Symbol_t* p_out){
-  return (get_next_line(p, g_line, MAX_LINE_LENGTH) == SUCCESS) ? parse_symbol(p, g_line, MAX_LINE_LENGTH, p_out) : FAIL;
+  return (get_next_line(p, g_line, MAX_LINE_LENGTH) == SUCCESS) ? parse_symbol(p, g_line, MAX_LINE_LENGTH, p_out) : CMD_EOF;
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/

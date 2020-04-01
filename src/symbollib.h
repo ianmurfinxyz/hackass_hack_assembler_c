@@ -50,7 +50,7 @@ int symlib_add_symbol(struct SymLib* p_lib, const char* sym, uint16_t address);
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*
- * brief: performs an address lookup in the symbol library.
+ * brief: performs a RAM/ROM address lookup in the symbol library.
  * @param p_lib: symbol library to search.
  * @param sym: the symbol to search for.
  * @param <out> p_address: used to return the found address.

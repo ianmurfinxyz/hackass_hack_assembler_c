@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#define CMD_EOF 0xc001 
+
 /*
  * ids for command formats; 5 different valid formats of assembly instructions.
  */
