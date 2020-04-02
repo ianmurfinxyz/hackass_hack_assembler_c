@@ -7,7 +7,12 @@
 #include "asmerr.h"
 #include "decoder.h"
 
-#define MAX_ADDRESS 32768 // RAM and ROM on the Hack platform are both 15-bit addressed 32K memory.
+#define VERBOSE(X)if(g_is_verbose){fprintf(stdout, X);}
+
+#define MAX_ADDRESS 32768        // RAM and ROM on the Hack platform are both 15-bit addressed 32K memory.
+#define RAM_START_ADDRESS 1024
+#define MAX_FILENAME_CHAR 256    // filename have 256 character max on linux.
+#define MAX_FILEPATH_CHAR 4096   // file paths have max 4K bytes on linux.
 
 /*
  * Data used in solution to print binary representation of 16-bit instructions. Adapted from:
@@ -24,31 +29,24 @@ static const char* g_bitstr[16] = {
  * operation modes of the assembler.
  */
 typedef enum Mode {
-  MODE_STRIP_WSC,   // strips all whitespace and comments from a .asm file; outputs another .asm file.
-  MODE_STRIP_ALL,   // strips whitespace, comments and symbols from a .asm file; outputs another .asm file.
+  MODE_HELP,        // outputs a help message.
+  MODE_STRIP,       // strips whitespace, comments and symbols from a .asm file; outputs another .asm file.
   MODE_ASSEMBLE     // converts a .asm file to a .hack file containing 'Hack' machine instructions in string form.
 } Mode_t;
 
 static Mode_t g_mode;
-
-#define RAM_START_ADDRESS 1024
-
-//#define CHECK_SUCCESS(X)if(X != SUCCESS){exit(-1);}
-//#define CHECK_VALID(X)if(X == NULL){exit(-1);}
-
-static struct SymLib* gp_sym_lib;   // for user defined symbols.
-
-static Parser_t* gp_parser = NULL;
-
-static uint16_t g_line_count;  // count of number of lines in the translation unit.
-static uint16_t g_ins_count;   // count of number of instructions to generate (=num_line - num_L_commands).
+static struct SymLib* gp_sym_lib;                  // for user defined symbols.
+static Parser_t* gp_parser;
+static char* g_ifpath;                             // file path string to input .asm file (dynamically allocated).
+static char g_ofname[MAX_FILENAME_CHAR];           // name of output file.
+static FILE* g_ofstream;                           // output file stream to print results.
+static uint16_t g_line_count;                      // number of non-whitespace/comment lines in the translation unit.
+static uint16_t g_ins_count;                       // number of instructions to generate (= num_line - num_L_commands).
 static uint16_t g_ram_address = RAM_START_ADDRESS; // the next ram address to store a new variable.
-
-static Command_t* gp_cmds;     // array of command structs generated from parsing lines.
-
-static uint16_t* gp_hackins;   // array of hack machine instructions.
-
-static int g_asm_fail = false; // flag indicates if assembly failed.
+static Command_t* gp_cmds;                         // array of command structs generated from parsing lines.
+static uint16_t* gp_hackins;                       // array of hack machine instructions.
+static int g_asm_fail;                             // flag indicates if assembly failed.
+static bool g_is_verbose;                          // flag to control verbose output. 
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*
@@ -56,17 +54,20 @@ static int g_asm_fail = false; // flag indicates if assembly failed.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
 void clean_exit(){
-  if(gp_sym_lib != NULL){
+  if(gp_sym_lib){
     free_symlib(&gp_sym_lib); 
   }
-  if(gp_parser != NULL){
+  if(gp_parser){
     free_parser(&gp_parser);
   }
-  if(gp_cmds != NULL){
+  if(gp_cmds){
     free(gp_cmds);
   }
-  if(gp_hackins != NULL){
+  if(gp_hackins){
     free(gp_hackins);
+  }
+  if(g_ifpath){
+    free(g_ifpath);
   }
 }
 
@@ -74,7 +75,7 @@ void clean_exit(){
 static void next_ram(){
   ++g_ram_address;
   if(g_ram_address > MAX_ADDRESS){
-    fprintf(stderr, "exceeded RAM size, variable with address '%x' cannot fit in 32K memory", g_ram_address);
+    fprintf(stderr, "exceeded RAM size, variable with address '%x' cannot fit in 32K memory/n", g_ram_address);
     g_asm_fail = FAIL;
   }
 }
@@ -84,10 +85,11 @@ static void next_line(){
   ++g_line_count;
 }
 
+/*-------------------------------------------------------------------------------------------------------------------*/
 static void next_instruction(){
   ++g_ins_count;
   if(g_line_count > MAX_ADDRESS){
-    fprintf(stderr, "exceeded ROM size, instruction '%d' cannot fit in 32K memory", g_line_count);
+    fprintf(stderr, "exceeded ROM size, instruction '%d' cannot fit in 32K memory\n", g_line_count);
     g_asm_fail = FAIL;
   }
 }
@@ -114,11 +116,6 @@ static int add_symbol(Symbol_t* p_sym){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-static void populate_predefined_symbols(){
-
-}
-
-/*-------------------------------------------------------------------------------------------------------------------*/
 /*
  * brief: searches the translation unit for symbols and adds all unique symbols to the library.
  *
@@ -130,11 +127,33 @@ static void populate_predefined_symbols(){
  *  performed by the assembler; this is convenient for initialising labels.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
-static int populate_symbols(){
+static int parse_symbols(){
   Symbol_t sym;
   int result;
 
-  // first populate all labels...
+  // first add all predefined symbols...
+  strcpy(sym._sym, "SP");
+  assert(symlib_add_symbol(gp_sym_lib, sym._sym, 0) == SUCCESS);
+  strcpy(sym._sym, "LCL");
+  assert(symlib_add_symbol(gp_sym_lib, sym._sym, 1) == SUCCESS);
+  strcpy(sym._sym, "ARG");
+  assert(symlib_add_symbol(gp_sym_lib, sym._sym, 2) == SUCCESS);
+  strcpy(sym._sym, "THIS");
+  assert(symlib_add_symbol(gp_sym_lib, sym._sym, 3) == SUCCESS);
+  strcpy(sym._sym, "THAT");
+  assert(symlib_add_symbol(gp_sym_lib, sym._sym, 4) == SUCCESS);
+  char rx[4];
+  for(int r = 0; r <= 15; ++r){
+    snprintf(rx, 4, "R%d", r);
+    strcpy(sym._sym, rx);
+    assert(symlib_add_symbol(gp_sym_lib, sym._sym, r) == SUCCESS);
+  }
+  strcpy(sym._sym, "SCREEN");
+  assert(symlib_add_symbol(gp_sym_lib, sym._sym, 16384) == SUCCESS);
+  strcpy(sym._sym, "KBD");
+  assert(symlib_add_symbol(gp_sym_lib, sym._sym, 24576) == SUCCESS);
+
+  // parse all labels...
   while((result = parser_next_symbol(gp_parser, &sym)) != CMD_EOF){
     next_line();
     if(result == FAIL || sym._type != SYMBOL_L){
@@ -142,22 +161,13 @@ static int populate_symbols(){
       continue;
     }
     if(add_symbol(&sym) != SUCCESS){
-      fprintf(stderr, "multiple declerations of label %s - labels must be unique.", sym._sym);
+      fprintf(stderr, "multiple declerations of label %s - labels must be unique\n", sym._sym);
       g_asm_fail = FAIL; 
     }
   }
-  //while(parser_has_next(gp_parser)){
-  //  if((parser_next_symbol(gp_parser, &sym) == SUCCESS) && sym._type == SYMBOL_L){
-  //    if(add_symbol(&sym) != SUCCESS){
-  //      fprintf(stderr, "multiple declerations of label %s - labels must be unique.", sym._sym);
-  //      g_asm_fail = FAIL; 
-  //    }
-  //  }
-  //  next_line();
-  //}
   parser_rewind(gp_parser); 
 
-  // then populate all variables...
+  // then parse all variables...
   while((result = parser_next_symbol(gp_parser, &sym)) != CMD_EOF){
     if(result == FAIL){
       continue;
@@ -167,20 +177,15 @@ static int populate_symbols(){
     }
     add_symbol(&sym);
   }
-  //while(parser_has_next(gp_parser)){
-  //  if((parser_next_symbol(gp_parser, &sym) == SUCCESS) && sym._type == SYMBOL_A){
-  //    add_symbol(&sym);
-  //  }
-  //}
   parser_rewind(gp_parser); 
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*
- * brief: 
+ * brief: parse assembly instructions into command structs.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
-static int parse_asm(){
+static int parse_commands(){
   gp_cmds = (Command_t*)calloc(g_line_count, sizeof(Command_t));
   int cmdno = 0;
   int result; 
@@ -188,21 +193,16 @@ static int parse_asm(){
     if(result == FAIL){
       g_asm_fail = FAIL;
     }
-    //print_command(stderr, &command);
+    if(g_is_verbose && result == SUCCESS){
+      print_command(stderr, &gp_cmds[cmdno]);
+    }
     ++cmdno;
   }
-
-  //while(parser_has_next(gp_parser) && cmdno < g_line_count){
-  //  if(parser_next_command(gp_parser, &gp_cmds[cmdno]) != SUCCESS){
-  //     g_asm_fail = FAIL;
-  //  }
-  //  ++cmdno;
-  //}
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 /*
- * brief: operates on the global gp_cmds command array; if command has a symbol, substitutes it for the literal.
+ * brief: operates on the global gp_cmds command array; if command has a symbol, substitutes it for mapped  literal.
  * @param mode: if mode=0, subs A and L command symbols, if mode!=0 subs only A command symbols.
  * note: expects the symbol library to contain ALL symbols encountered; should be guaranteed by the symbol populating
  *  phase.
@@ -223,17 +223,13 @@ static int substitute_symbols(int mode){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-static int generate_asm(){
-
-}
-
-/*-------------------------------------------------------------------------------------------------------------------*/
 /*
  * brief: operates on the global gp_cmds command array; translates commands into hack machine instructions.
  * note: command array MUST first have all symbols substituted for their literal values.
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
-static int generate_instructions(){
+static int generate_hackins(){
+  VERBOSE("===== GENERATING HACK INSTRUCTIONS =====\n");
   gp_hackins = (uint16_t*)calloc(g_line_count, sizeof(uint16_t));
   int in = 0;
   for(int cn = 0; cn < g_line_count; ++cn){
@@ -247,7 +243,8 @@ static int generate_instructions(){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-static int print_instructions(FILE* stream){
+static int print_hackins(FILE* stream){
+  VERBOSE("===== PRINTING HACK INSTRUCTIONS =====\n");
   for(int in = 0; in < g_ins_count; ++in){
     uint16_t i = gp_hackins[in];
     fprintf(stream, "%s%s%s%s\n", g_bitstr[i >> 12], g_bitstr[(i >> 8) & 0x000F], g_bitstr[(i >> 4) & 0x000F], g_bitstr[i & 0x000F]); 
@@ -255,42 +252,165 @@ static int print_instructions(FILE* stream){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
+/*
+ * brief: prints all commands in g_cmds to the file/stream.
+ */
+/*-------------------------------------------------------------------------------------------------------------------*/
+static int print_assembly(FILE* stream){
+  VERBOSE("===== PRINTING ASSEMBLY COMMANDS =====\n");
+
+}
+
+/*-------------------------------------------------------------------------------------------------------------------*/
+static void print_help(){
+  printf("some help text\n");
+}
+
+/*-------------------------------------------------------------------------------------------------------------------*/
+static void parse_args(int argc, char* argv[]){
+  bool is_error = false;
+
+  // parse switches...
+  int oi = -1;
+  bool s = false, h = false, a = false, o = false, v = false;
+  for(int i = 1; i < argc; ++i){
+    if(argv[i][0] == '-'){
+      for(int j = 1; j < strlen(argv[i]); ++j){
+        switch(argv[i][j]){
+          case 's':
+            s = true;
+            break;
+          case 'h':
+            h = true;
+            break;
+          case 'a':
+            a = true;
+            break;
+          case 'o':
+            oi = i;
+            o = true;
+            break;
+          case 'v':
+            v = true;
+            break;
+          default:
+            fprintf(stderr, "fatal error: unrecognised command line option '-%c'\n", argv[i][j]);
+            is_error = true;
+        }
+      }
+    }
+  }
+
+  // search for .asm file input...
+  for(int i = 1; i < argc; ++i){
+    if(argv[i][0] == '-'){
+      continue;
+    }
+    if(oi == (i - 1)){ // if string follows -o switch then this is not the input file you are looking for.
+      continue;
+    }
+    int l = strlen(argv[i]);
+    if(l < MAX_FILEPATH_CHAR && strstr(argv[i], ".asm") != NULL){
+      g_ifpath = (char*)calloc(l, sizeof(char)); 
+      strcpy(g_ifpath, argv[i]);
+    }
+  }
+  if(g_ifpath == NULL){
+    fprintf(stderr, "fatal error: no input file\n");
+    is_error = true;
+  }
+
+
+  if(h && !s && !a){
+    g_mode = MODE_HELP;
+  }
+  else if(s && !h && !a){
+    g_mode = MODE_STRIP;
+  }
+  else if(!h && !s){
+    g_mode = MODE_ASSEMBLE;
+  }
+  else{
+    fprintf(stderr, "fatal error: conflicting operation modes; -h,-a,-s are mutually exclusive\n");
+    is_error = true;
+  }
+
+  if(v){
+    g_is_verbose = true;
+  }
+
+  strncpy(g_ofname, "a.out", MAX_FILENAME_CHAR);
+  if(o){
+    if(oi + 1 >= argc || argv[oi + 1][0] =='-'){
+      fprintf(stderr, "fatal error: specified '-o' option but provided no file name\n"); 
+      is_error = true;
+    }
+    else{
+      strncpy(g_ofname, argv[oi + 1], MAX_FILENAME_CHAR);
+    }
+  }
+
+  if(is_error){
+    exit(FAIL);
+  }
+
+  if(!h){
+    g_ofstream = fopen(g_ofname, "w");
+    if(g_ofstream == NULL){
+      perror(g_ofname);
+      exit(FAIL);
+    }
+  }
+}
+
+/*-------------------------------------------------------------------------------------------------------------------*/
+static void parse_file(){
+  VERBOSE("===== PARSING SYMBOLS =====\n");
+  parse_symbols();
+  if(g_asm_fail){
+    VERBOSE("terminating assembly: symbol errors occured.\n");
+    exit(FAIL);
+  }
+  VERBOSE("===== PARSING COMMANDS =====\n");
+  parse_commands();
+  if(g_asm_fail){
+    VERBOSE("terminating assembly: command errors occured.\n");
+    exit(FAIL);
+  }
+}
+
+/*-------------------------------------------------------------------------------------------------------------------*/
+static void init_assembler(){
+  assert(atexit(clean_exit) == SUCCESS);
+  assert(new_symlib(&gp_sym_lib) == SUCCESS);
+  if((gp_parser = new_parser(g_ifpath)) == NULL){
+    exit(FAIL);
+  }
+}
+
+/*-------------------------------------------------------------------------------------------------------------------*/
 int main(int argc, char* argv[]){
-  if(atexit(clean_exit)){
-    exit(-1);
-  }
-
-  if(new_symlib(&gp_sym_lib) != SUCCESS){exit(-1);}
-  if((gp_parser = new_parser("test.asm")) == NULL){exit(-1);}
-
-  populate_predefined_symbols();
-  populate_symbols();
-  if(g_asm_fail){
-    exit(FAIL);
-  }
-
-  parse_asm();
-  if(g_asm_fail){
-    exit(FAIL);
-  }
-
-  g_mode = MODE_ASSEMBLE;     // temp
-
-  // these operations depend on the .asm input file being parsed without errors.
+  parse_args(argc, argv);
   switch(g_mode){
-    case MODE_STRIP_WSC:
-      // generate the .asm file from the command array.
-    case MODE_STRIP_ALL:
-      // sub all symbols
-      // generate the .asm file from the subbed command array.
+    case MODE_HELP:
+      print_help();
+      break;
+    case MODE_STRIP:
+      init_assembler();
+      parse_file();
       substitute_symbols(0);
+      print_assembly(g_ofstream);
+      fclose(g_ofstream);
+      break;
     case MODE_ASSEMBLE:
+      init_assembler();
+      parse_file();
       substitute_symbols(1);
       init_decoder();
-      generate_instructions();
-      print_instructions(stdout);
+      generate_hackins();
+      print_hackins(g_ofstream);
+      fclose(g_ofstream);
   }
-  
   return SUCCESS;
 }
 

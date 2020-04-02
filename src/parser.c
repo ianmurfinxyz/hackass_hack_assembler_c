@@ -681,7 +681,7 @@ void parser_rewind(Parser_t* p){
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 void print_command(FILE* stream, Command_t* c){
-  fprintf(stream, "--- COMMAND ---\ntype:%s\n_sym:%s\ndest:%s\ncomp:%s\njump:%s\n---------------\n", \
-      format_id_to_string(c->_type), c->_sym, c->_dest, c->_comp, c->_jump);
+  fprintf(stream, "------------- COMMAND -------------\ntype:%s\nsym :%s\ndest:%s\ncomp:%s\njump:%s\n----------------"
+      "-------------------\n", format_id_to_string(c->_type), c->_sym, c->_dest, c->_comp, c->_jump);
 }
 
