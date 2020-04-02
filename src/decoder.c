@@ -94,7 +94,7 @@ int decode(Command_t* p_cmd, uint16_t* p_code){
   switch(p_cmd->_type){
     case CFORMAT_A1:{
       uint16_t add = (uint16_t)strtol(p_cmd->_sym, NULL, 10); 
-      (*p_code) = 0b1000000000000000 | add; 
+      (*p_code) = 0b0000000000000000 | add; 
       return SUCCESS;
     }
     case CFORMAT_C0:

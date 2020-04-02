@@ -10,6 +10,17 @@
 #define MAX_ADDRESS 32768 // RAM and ROM on the Hack platform are both 15-bit addressed 32K memory.
 
 /*
+ * Data used in solution to print binary representation of 16-bit instructions. Adapted from:
+ *  source: https://stackoverflow.com/questions/111928/is-there-a-printf-converter-to-print-in-binary-format?page=1&tab=votes#tab-top
+ */
+static const char* g_bitstr[16] = {
+    [ 0] = "0000", [ 1] = "0001", [ 2] = "0010", [ 3] = "0011",
+    [ 4] = "0100", [ 5] = "0101", [ 6] = "0110", [ 7] = "0111",
+    [ 8] = "1000", [ 9] = "1001", [10] = "1010", [11] = "1011",
+    [12] = "1100", [13] = "1101", [14] = "1110", [15] = "1111",
+};
+
+/*
  * operation modes of the assembler.
  */
 typedef enum Mode {
@@ -30,11 +41,11 @@ static struct SymLib* gp_sym_lib;   // for user defined symbols.
 static Parser_t* gp_parser = NULL;
 
 static uint16_t g_line_count;  // count of number of lines in the translation unit.
-static uint16_t g_ram_address; // the next ram address to store a new variable.
+static uint16_t g_ins_count;   // count of number of instructions to generate (=num_line - num_L_commands).
+static uint16_t g_ram_address = RAM_START_ADDRESS; // the next ram address to store a new variable.
 
 static Command_t* gp_cmds;     // array of command structs generated from parsing lines.
 
-static int g_insno;            // count of number of instructions generated (note: different to sizeof hackins array).
 static uint16_t* gp_hackins;   // array of hack machine instructions.
 
 static int g_asm_fail = false; // flag indicates if assembly failed.
@@ -71,6 +82,10 @@ static void next_ram(){
 /*-------------------------------------------------------------------------------------------------------------------*/
 static void next_line(){
   ++g_line_count;
+}
+
+static void next_instruction(){
+  ++g_ins_count;
   if(g_line_count > MAX_ADDRESS){
     fprintf(stderr, "exceeded ROM size, instruction '%d' cannot fit in 32K memory", g_line_count);
     g_asm_fail = FAIL;
@@ -92,7 +107,7 @@ static int add_symbol(Symbol_t* p_sym){
       assert(result == SUCCESS || result == ERROR_1);
       return (result == SUCCESS) ? next_ram(), SUCCESS : FAIL;
     case SYMBOL_L:
-      result = symlib_add_symbol(gp_sym_lib, p_sym->_sym, g_line_count + 1);
+      result = symlib_add_symbol(gp_sym_lib, p_sym->_sym, g_ins_count + 1);
       assert(result == SUCCESS || result == ERROR_1);
       return (result == SUCCESS) ? SUCCESS : FAIL;
   }
@@ -120,10 +135,10 @@ static int populate_symbols(){
   int result;
 
   // first populate all labels...
-
   while((result = parser_next_symbol(gp_parser, &sym)) != CMD_EOF){
     next_line();
     if(result == FAIL || sym._type != SYMBOL_L){
+      next_instruction(); // dont count L commands; they dont generate instructions.
       continue;
     }
     if(add_symbol(&sym) != SUCCESS){
@@ -228,15 +243,14 @@ static int generate_instructions(){
       ++in;
     }
   }
-  g_insno = in; // can be smaller than hackins array as L commands dont generate instructions.
+  assert(in == g_ins_count);
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 static int print_instructions(FILE* stream){
-  char insstr[17];
-  for(int in = 0; in < g_insno; ++in){
-    snprintf(insstr, 17, "%x", gp_hackins[in]);
-    fprintf(stream, "%s\n", insstr);
+  for(int in = 0; in < g_ins_count; ++in){
+    uint16_t i = gp_hackins[in];
+    fprintf(stream, "%s%s%s%s\n", g_bitstr[i >> 12], g_bitstr[(i >> 8) & 0x000F], g_bitstr[(i >> 4) & 0x000F], g_bitstr[i & 0x000F]); 
   }
 }
 
