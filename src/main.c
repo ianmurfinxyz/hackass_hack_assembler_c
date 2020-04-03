@@ -146,7 +146,7 @@ static int add_symbol(Symbol_t* p_sym){
       assert(result == SUCCESS || result == ERROR_1);
       return (result == SUCCESS) ? next_ram(), SUCCESS : FAIL;
     case SYMBOL_L:
-      result = symlib_add_symbol(gp_sym_lib, p_sym->_sym, g_ins_count + 1);
+      result = symlib_add_symbol(gp_sym_lib, p_sym->_sym, g_ins_count);
       assert(result == SUCCESS || result == ERROR_1);
       return (result == SUCCESS) ? SUCCESS : FAIL;
   }
@@ -192,16 +192,17 @@ static int parse_symbols(){
 
   // parse all labels...
   while((result = parser_next_symbol(gp_parser, &sym)) != CMD_EOF){
-    next_line();
-    if(result == FAIL || sym._type != SYMBOL_L){
+    if(result != FAIL && sym._type == SYMBOL_L){
+      VERBOSE2("found label symbol '%s', adding to symbol library...\n", sym._sym);
+      if(add_symbol(&sym) != SUCCESS){
+        fprintf(stderr, "multiple declerations of label %s - labels must be unique\n", sym._sym);
+        g_asm_fail = FAIL; 
+      }
+    }
+    else{
       next_instruction(); // dont count L commands; they dont generate instructions.
-      continue;
     }
-    VERBOSE2("found label symbol '%s', adding to symbol library...\n", sym._sym);
-    if(add_symbol(&sym) != SUCCESS){
-      fprintf(stderr, "multiple declerations of label %s - labels must be unique\n", sym._sym);
-      g_asm_fail = FAIL; 
-    }
+    next_line();
   }
   parser_rewind(gp_parser); 
 
@@ -292,10 +293,12 @@ static int print_hackins(FILE* stream){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-static int print_assembly(FILE* stream){
+static int print_stripped_assembly(FILE* stream){
   VERBOSE2("printing assembly commands to file '%s'...\n", g_ofname);
   for(int cn = 0; cn < g_line_count; ++cn){
-    parser_print_cmdasm(stream, &gp_cmds[cn]);
+    if(gp_cmds[cn]._type != CFORMAT_L0 && gp_cmds[cn]._type != CFORMAT_L1){
+      parser_print_cmdasm(stream, &gp_cmds[cn]);
+    }
   }
 }
 
@@ -449,7 +452,7 @@ int main(int argc, char* argv[]){
       init_assembler();
       parse_file();
       substitute_symbols(0);
-      print_assembly(g_ofstream);
+      print_stripped_assembly(g_ofstream);
       fclose(g_ofstream);
       break;
     case MODE_ASSEMBLE:

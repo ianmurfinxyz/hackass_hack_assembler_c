@@ -729,9 +729,11 @@ int parser_print_cmdasm(FILE* stream, Command_t* c){
       break;
     case CFORMAT_A0:
     case CFORMAT_A1:
+      snprintf(g_line, MAX_LINE_LENGTH, "@%s\n", c->_sym);
+      break;
     case CFORMAT_L0:
     case CFORMAT_L1:
-      snprintf(g_line, MAX_LINE_LENGTH, "@%s\n", c->_sym);
+      snprintf(g_line, MAX_LINE_LENGTH, "(%s)\n", c->_sym);
       break;
     default:
       return FAIL;
