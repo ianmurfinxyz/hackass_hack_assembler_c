@@ -1,3 +1,39 @@
+/*=====================================================================================================================
+ *
+ * MIT License
+ * 
+ * This project was completed by Ian Murfin as part of the Nand2Tetris Audit course 
+ * at coursera.
+ *
+ * It was completed as part of my personal portfolio. Nand2tetris requires submissions
+ * be your own work; plagiarism is your responsibility.
+ *
+ * Copyright (c) 2020 Ian Murfin
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in 
+ * the Software without restriction, including without limitation the rights to 
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies 
+ * of the Software, and to permit persons to whom the Software is furnished to do 
+ * so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all 
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS 
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR 
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER 
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * 
+ * End license text. 
+ *
+ * author: Ian Murfin
+ * file: parser.c
+ *
+ *===================================================================================================================*/
+
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -680,7 +716,32 @@ void parser_rewind(Parser_t* p){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-void print_command(FILE* stream, Command_t* c){
+int parser_print_cmdasm(FILE* stream, Command_t* c){
+  switch(c->_type){
+    case CFORMAT_C0:
+      snprintf(g_line, MAX_LINE_LENGTH, "%s=%s;%s\n", c->_dest, c->_comp, c->_jump);
+      break;
+    case CFORMAT_C1:
+      snprintf(g_line, MAX_LINE_LENGTH, "%s=%s\n", c->_dest, c->_comp);
+      break;
+    case CFORMAT_C2:
+      snprintf(g_line, MAX_LINE_LENGTH, "%s;%s\n", c->_comp, c->_jump);
+      break;
+    case CFORMAT_A0:
+    case CFORMAT_A1:
+    case CFORMAT_L0:
+    case CFORMAT_L1:
+      snprintf(g_line, MAX_LINE_LENGTH, "@%s\n", c->_sym);
+      break;
+    default:
+      return FAIL;
+  }
+  fprintf(stream, g_line);
+  return SUCCESS;
+}
+
+/*-------------------------------------------------------------------------------------------------------------------*/
+void parser_print_cmdrep(FILE* stream, Command_t* c){
   fprintf(stream, "------------- COMMAND -------------\ntype:%s\nsym :%s\ndest:%s\ncomp:%s\njump:%s\n----------------"
       "-------------------\n", format_id_to_string(c->_type), c->_sym, c->_dest, c->_comp, c->_jump);
 }

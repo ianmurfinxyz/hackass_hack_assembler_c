@@ -1,3 +1,39 @@
+/*=====================================================================================================================
+ *
+ * MIT License
+ * 
+ * This project was completed by Ian Murfin as part of the Nand2Tetris Audit course 
+ * at coursera.
+ *
+ * It was completed as part of my personal portfolio. Nand2tetris requires submissions
+ * be your own work; plagiarism is your responsibility.
+ *
+ * Copyright (c) 2020 Ian Murfin
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in 
+ * the Software without restriction, including without limitation the rights to 
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies 
+ * of the Software, and to permit persons to whom the Software is furnished to do 
+ * so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in all 
+ * copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS 
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR 
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER 
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+ * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * 
+ * End license text. 
+ *
+ * author: Ian Murfin
+ * file: main.c
+ *
+ *===================================================================================================================*/
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
@@ -8,6 +44,7 @@
 #include "decoder.h"
 
 #define VERBOSE(X)if(g_is_verbose){fprintf(stdout, X);}
+#define VERBOSE2(X, Y)if(g_is_verbose){fprintf(stdout, X, Y);}
 
 #define MAX_ADDRESS 32768        // RAM and ROM on the Hack platform are both 15-bit addressed 32K memory.
 #define RAM_START_ADDRESS 1024
@@ -81,7 +118,7 @@ static void next_ram(){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-static void next_line(){
+static inline void next_line(){
   ++g_line_count;
 }
 
@@ -160,6 +197,7 @@ static int parse_symbols(){
       next_instruction(); // dont count L commands; they dont generate instructions.
       continue;
     }
+    VERBOSE2("found label symbol '%s', adding to symbol library...\n", sym._sym);
     if(add_symbol(&sym) != SUCCESS){
       fprintf(stderr, "multiple declerations of label %s - labels must be unique\n", sym._sym);
       g_asm_fail = FAIL; 
@@ -175,7 +213,9 @@ static int parse_symbols(){
     if(sym._type != SYMBOL_A){
       continue;
     }
-    add_symbol(&sym);
+    if(add_symbol(&sym) == SUCCESS){
+      VERBOSE2("found variable symbol '%s', adding to symbol library...\n", sym._sym);
+    }
   }
   parser_rewind(gp_parser); 
 }
@@ -194,7 +234,7 @@ static int parse_commands(){
       g_asm_fail = FAIL;
     }
     if(g_is_verbose && result == SUCCESS){
-      print_command(stderr, &gp_cmds[cmdno]);
+      parser_print_cmdrep(stderr, &gp_cmds[cmdno]);
     }
     ++cmdno;
   }
@@ -229,7 +269,7 @@ static int substitute_symbols(int mode){
  */
 /*-------------------------------------------------------------------------------------------------------------------*/
 static int generate_hackins(){
-  VERBOSE("===== GENERATING HACK INSTRUCTIONS =====\n");
+  VERBOSE("generating Hack instructions...\n");
   gp_hackins = (uint16_t*)calloc(g_line_count, sizeof(uint16_t));
   int in = 0;
   for(int cn = 0; cn < g_line_count; ++cn){
@@ -244,7 +284,7 @@ static int generate_hackins(){
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 static int print_hackins(FILE* stream){
-  VERBOSE("===== PRINTING HACK INSTRUCTIONS =====\n");
+  VERBOSE2("printing Hack instructions to file '%s'...\n", g_ofname);
   for(int in = 0; in < g_ins_count; ++in){
     uint16_t i = gp_hackins[in];
     fprintf(stream, "%s%s%s%s\n", g_bitstr[i >> 12], g_bitstr[(i >> 8) & 0x000F], g_bitstr[(i >> 4) & 0x000F], g_bitstr[i & 0x000F]); 
@@ -252,18 +292,24 @@ static int print_hackins(FILE* stream){
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
-/*
- * brief: prints all commands in g_cmds to the file/stream.
- */
-/*-------------------------------------------------------------------------------------------------------------------*/
 static int print_assembly(FILE* stream){
-  VERBOSE("===== PRINTING ASSEMBLY COMMANDS =====\n");
-
+  VERBOSE2("printing assembly commands to file '%s'...\n", g_ofname);
+  for(int cn = 0; cn < g_line_count; ++cn){
+    parser_print_cmdasm(stream, &gp_cmds[cn]);
+  }
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 static void print_help(){
-  printf("some help text\n");
+  printf("USAGE\n  hackass infile [-o outfile] [-a|-s|-h] [-v]\n\n"
+          "OPTIONS\n"
+          "  -a    Assemble .asm infile to .hack outfile (default mode).\n"
+          "  -s    Strip .asm infile of whitespace, comments and symbols.\n"
+          "  -h    Print this help message.\n"
+          "  -v    Print verbose assembler output to stdout.\n"
+          "  -o    Specify name of outfile, default is a.out\n\n"
+          "For more detailed help, please see,\n"
+          "<https://github.com/imurf/nand2tetris-hack-assembler-c>\n");
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
@@ -301,6 +347,27 @@ static void parse_args(int argc, char* argv[]){
     }
   }
 
+  if(v){
+    g_is_verbose = true;
+  }
+
+  if(h && !s && !a){
+    g_mode = MODE_HELP;
+    return;
+  }
+  else if(s && !h && !a){
+    VERBOSE("started MODE_STRIP, stripping comments, whitespace and symbols from .asm input...\n");
+    g_mode = MODE_STRIP;
+  }
+  else if(!h && !s){
+    VERBOSE("started MODE_ASSEMBLE, beginning assembly of .asm input to .hack file...\n");
+    g_mode = MODE_ASSEMBLE;
+  }
+  else{
+    fprintf(stderr, "fatal error: conflicting operation modes; -h,-a,-s are mutually exclusive\n");
+    is_error = true;
+  }
+
   // search for .asm file input...
   for(int i = 1; i < argc; ++i){
     if(argv[i][0] == '-'){
@@ -321,23 +388,6 @@ static void parse_args(int argc, char* argv[]){
   }
 
 
-  if(h && !s && !a){
-    g_mode = MODE_HELP;
-  }
-  else if(s && !h && !a){
-    g_mode = MODE_STRIP;
-  }
-  else if(!h && !s){
-    g_mode = MODE_ASSEMBLE;
-  }
-  else{
-    fprintf(stderr, "fatal error: conflicting operation modes; -h,-a,-s are mutually exclusive\n");
-    is_error = true;
-  }
-
-  if(v){
-    g_is_verbose = true;
-  }
 
   strncpy(g_ofname, "a.out", MAX_FILENAME_CHAR);
   if(o){
@@ -365,16 +415,16 @@ static void parse_args(int argc, char* argv[]){
 
 /*-------------------------------------------------------------------------------------------------------------------*/
 static void parse_file(){
-  VERBOSE("===== PARSING SYMBOLS =====\n");
+  VERBOSE2("parsing symbols from input file '%s'...\n", g_ifpath);
   parse_symbols();
   if(g_asm_fail){
-    VERBOSE("terminating assembly: symbol errors occured.\n");
+    VERBOSE("terminating assembly: symbol errors occured\n");
     exit(FAIL);
   }
-  VERBOSE("===== PARSING COMMANDS =====\n");
+  VERBOSE2("parsing assembly commands from input file '%s'...\n", g_ifpath);
   parse_commands();
   if(g_asm_fail){
-    VERBOSE("terminating assembly: command errors occured.\n");
+    VERBOSE("terminating assembly: assembly command errors occured\n");
     exit(FAIL);
   }
 }

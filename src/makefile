@@ -1,17 +1,23 @@
-hackass : main.o dynpoolalloc.o symbollib.o poolalloc.o
-	gcc -g -o hackass main.o dynpoolalloc.o poolalloc.o symbollib.o
+hackass : main.o parser.o decoder.o dynpoolalloc.o symbollib.o poolalloc.o
+	gcc -o hackass main.o parser.o decoder.o dynpoolalloc.o poolalloc.o symbollib.o
 
 main.o : main.c
-	gcc -g -c main.c
+	gcc -c main.c
+
+parser.o : parser.c
+	gcc -c parser.c
+
+decoder.o : decoder.c
+	gcc -c decoder.c
 
 symbollib.o : symbollib.c dynpoolalloc.h
-	gcc -g -c symbollib.c
+	gcc -c symbollib.c
 
 dynpoolalloc.o : dynpoolalloc.c poolalloc.h
-	gcc -g -c dynpoolalloc.c
+	gcc -c dynpoolalloc.c
 
 poolalloc.o : poolalloc.c
-	gcc -g -c poolalloc.c
+	gcc -c poolalloc.c
 
 clean : 
-	rm main.o symbollib.o dynpoolalloc.o poolalloc.o
+	rm main.o parser.o decoder.o symbollib.o dynpoolalloc.o poolalloc.o
