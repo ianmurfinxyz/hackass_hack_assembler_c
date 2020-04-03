@@ -267,29 +267,3 @@ int symlib_search_symbol(struct SymLib* p_lib, const char* sym, uint16_t* p_addr
 
   return SUCCESS;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
