@@ -104,45 +104,13 @@ typedef struct Symbol {
   char _sym[MAX_SYM_LENGTH];
 } Symbol_t;
 
-
-/*
- *
- */
 Parser_t* new_parser(const char* filename);
-/*
- *
- */
-
 void free_parser(Parser_t** p_parser);
-
-/*
- *
- */
 int parser_next_command(Parser_t* p_parser, Command_t* p_out);
-  
-/*
- *
- */
 int parser_next_symbol(Parser_t* p, Symbol_t* p_out);
-
-/*
- *
- */
 bool parser_has_next(Parser_t* p_parser);
-
-/*
- *
- */
 void parser_rewind(Parser_t* p_parser);
-
-/*
- *
- */
 void parser_print_cmdrep(FILE* stream, Command_t* c);
-
-/*
- *
- */
 int parser_print_cmdasm(FILE* stream, Command_t* c);
 
 #endif
