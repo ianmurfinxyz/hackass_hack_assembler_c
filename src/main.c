@@ -312,7 +312,7 @@ static void print_help(){
           "  -v    Print verbose assembler output to stdout.\n"
           "  -o    Specify name of outfile, default is a.out\n\n"
           "For more detailed help, please see,\n"
-          "<https://github.com/imurf/hack-assembler-c>\n");
+          "<https://github.com/imurf/hackass-hack-assembler-c>\n");                           
 }
 
 /*-------------------------------------------------------------------------------------------------------------------*/
