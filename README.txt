@@ -182,7 +182,7 @@ semantically invalid C command. This idiosyncrasy of the Hack platform is a pote
 find, crashes. I thus made it a design objective of my assembler to catch these errors and report them to the user.
 This was the main motivation behind making the assembler more than a simple text parser.
 
-                                                    [7-LICENSE]
+                                                    [8-LICENSE]
 
               MIT License
 
